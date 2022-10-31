@@ -1,0 +1,6 @@
+deepxde
+pandas
+isort
+pydocstyle
+pylint
+mypy

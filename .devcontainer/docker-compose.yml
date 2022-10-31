@@ -1,0 +1,10 @@
+version: '0.1'
+
+services:
+  dev-environment-python:
+    build: .
+    stdin_open: true # docker run -i
+    tty: true        # docker run -t
+    volumes:
+      - ../:/app/
+      - ./.ssh/:/root/.ssh:ro
