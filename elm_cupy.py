@@ -76,6 +76,13 @@ class RectHole(Geometry):
 
 class ELM:
     def __init__(self, layers: List[int], activation_func: Callable, L: int) -> None:
+        """Initialize elm.
+
+        Args:
+            layers (List[int]): layersizes without input and output layer
+            activation_func (Callable): _description_
+            L (int): number of features in X
+        """
         for i in range(len(layers)):
             layers[i] -= 1
         self.layers: List[int] = [L] + layers + [1]
