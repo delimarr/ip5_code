@@ -5,3 +5,5 @@ isort
 pydocstyle
 pylint
 mypy
+tensorflow
+tensorflow-probability
