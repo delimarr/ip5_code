@@ -1,8 +1,6 @@
 import os
 # comment out to enable gpu
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-import sys
-import timeit
 import numpy as np
 import deepxde as dde
 from typing import List, Callable
@@ -17,7 +15,6 @@ a = 0.4
 nb_grid_points = 101
 
 from deepxde.nn.tensorflow.fnn import activations
-from deepxde.nn.tensorflow.fnn import initializers
 from deepxde.nn.tensorflow.fnn import regularizers
 
 class FNN2(dde.nn.tensorflow.nn.NN):
@@ -175,7 +172,7 @@ class PdeELM:
         self.w_out = A_inv.dot(b)
         return A
 
-    def predict(self, X) -> np.ndarray:
+    def predict(self, X: np.ndarray) -> np.ndarray:
         hl = self.model_.predict(X)
         return hl.dot(self.w_out)
 
@@ -228,7 +225,7 @@ def print_dev_dom(elm) -> None:
     y_pred_test = elm.predict(Xt)
     y_true_test = elm.geom.exact_sol(Xt)
     deviation_test = rms(y_pred_test, y_true_test)
-    print(f"{elm.__class__.__name__} RMS Deviation test:\t{deviation_test}")
+    print(f"{elm.__class__.__name__} RMS Deviation test:\t{deviation_test}\n")
 
 def rms(y_pred: np.ndarray, y_true: np.ndarray) -> float:
     return ((y_pred - y_true)**2).mean()**0.5
@@ -258,8 +255,7 @@ if __name__=="__main__":
     exact_elm = ExactELM(pde_elm)
     exact_elm.fit(X)
 
-    print(f"Not trained weights are the same: {compare_elm_inp_weights(exact=exact_elm, pde=pde_elm)}")
-
+    print(f"\nNot trained weights are the same: {compare_elm_inp_weights(exact=exact_elm, pde=pde_elm)}\n")
     print_dev_dom(pde_elm)
     print_dev_dom(exact_elm)
 
@@ -274,5 +270,7 @@ if __name__=="__main__":
     w = exact_w
     A_inv = w.dot(b_inv)
     A = np.linalg.pinv(A_inv, rcond=1e-10)
-    ...
 
+    rtol = 1e-6
+    close = np.isclose(A, A_pde, rtol=rtol)
+    print(f"loss matrix is the same (tolerance: {rtol}):\t{close.sum() == A.size}")
