@@ -1,14 +1,17 @@
+# use backend tensorflow
 import os
 # comment out to enable gpu
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import numpy as np
 import deepxde as dde
-from typing import List, Callable
+from typing import List
 
 dde.config.real.set_float64()
 dde.config.set_default_float("float64")
 from deepxde.backend import tf
-#tf.function(jit_compile=True)
+
+if dde.backend.backend_name != 'tensorflow':
+    raise Exception("set backend tensorflow with: python -m deepxde.backend.set_default_backend tensorflow")
 
 b = 1.0
 a = 0.4
