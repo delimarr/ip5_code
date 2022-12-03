@@ -4,7 +4,7 @@ import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import numpy as np
 import deepxde as dde
-from typing import List
+from typing import List, Tuple
 
 dde.config.real.set_float64()
 dde.config.set_default_float("float64")
@@ -95,12 +95,12 @@ class RectHole(Geometry):
         self.bcs: List[dde.icbc.boundary_conditions.BC] = []
         self.bcs.append(dde.DirichletBC(geom=self.geom, func=RectHole._exact_sol, on_boundary=RectHole._ver_boundary))
         self.bcs.append(dde.DirichletBC(geom=self.geom, func=RectHole._exact_sol, on_boundary=RectHole._int_boundary))
-        self.bcs.append(dde.NeumannBC(geom=self.geom, func=RectHole._exact_grad_n, on_boundary=RectHole._hor_boundary))
+        #self.bcs.append(dde.NeumannBC(geom=self.geom, func=RectHole._exact_grad_n, on_boundary=RectHole._hor_boundary))
 
-        self.data_dom = dde.data.PDE(self.geom, RectHole.pde, [], num_domain=num_dom, num_boundary=0, num_test=num_tst, solution=None)
+        self.data_dom = dde.data.PDE(self.geom, RectHole.pde, [], num_domain=num_dom, num_boundary=0, num_test=101, solution=None)
         self.data_bcs = []
         for bc in self.bcs:
-            self.data_bcs.append(dde.data.PDE(self.geom, RectHole.pde, [bc], num_domain=0, num_boundary=num_bnd, num_test=num_tst, solution=None))
+            self.data_bcs.append(dde.data.PDE(self.geom, RectHole.pde, [bc], num_domain=0, num_boundary=num_bnd, num_test=101, solution=__class__._exact_sol))
 
     def _ver_boundary(r, on_boundary):
         x, _ = r
@@ -171,9 +171,24 @@ class PdeELM:
         # build b = -phi
         b = -self.geom.phi(X)
 
+        #A_inv = np.linalg.pinv(A, rcond=1e-10)
+        #self.w_out = A_inv.dot(b)
+        return (A, b)
+
+    def fit(self) -> Tuple[np.ndarray, np.ndarray]:
+        A_dom, b_dom = self.fit_dom()
+        A = A_dom
+        b = b_dom
+        for data_bc in self.geom.data_bcs:
+            m = dde.Model(data_bc, self.net)
+            m.compile(optimizer='adam', lr=0)
+            X, b_bc, _ = data_bc.train_next_batch()
+            A_bc = m.predict(X)
+            A = np.concatenate([A, A_bc])
+            b = np.concatenate([b, b_bc])
         A_inv = np.linalg.pinv(A, rcond=1e-10)
         self.w_out = A_inv.dot(b)
-        return A
+        return (A, b)
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         hl = self.model_.predict(X)
@@ -241,19 +256,20 @@ def compare_elm_inp_weights(exact: ExactELM, pde: PdeELM) -> bool:
     return True
 
 if __name__=="__main__":
-    num_dom = 7
-    num_bnd = 5
-    num_tst = 9
+    num_dom = 2048
+    num_bnd = 512
+    num_tst = 101
 
     inp_dim = 2
-    layers = [inp_dim] + [11]
+    layers = [inp_dim] + [32, 128, 512]
     net = FNN2([2] + layers, "tanh", "Glorot uniform")
 
     geom = RectHole(num_dom=num_dom, num_bnd=num_bnd)
     X, _, _ = geom.data_dom.train_next_batch()
 
     pde_elm = PdeELM(net, geom)
-    A_pde = pde_elm.fit_dom()
+    A_pde, b = pde_elm.fit()
+    #A_pde, b = pde_elm.fit_dom()
 
     exact_elm = ExactELM(pde_elm)
     exact_elm.fit(X)
@@ -268,7 +284,6 @@ if __name__=="__main__":
     pde_y = pde_elm.predict(X)
 
     # calculate loss matrix with help of exact solution: w x b^-1 = A^-1
-    b = -geom.phi(X)
     b_inv = np.linalg.pinv(b, rcond=1e-10)
     w = exact_w
     A_inv = w.dot(b_inv)
@@ -277,3 +292,4 @@ if __name__=="__main__":
     rtol = 1e-6
     close = np.isclose(A, A_pde, rtol=rtol)
     print(f"loss matrix is the same (tolerance: {rtol}):\t{close.sum() == A.size}")
+    ...
