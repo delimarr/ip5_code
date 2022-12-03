@@ -149,6 +149,10 @@ class PdeELM:
     def __init__(self, net: FNN2, geom: Geometry) -> None:
         self.net: FNN2 = net
         self.geom: Geometry = geom
+        data = self.geom.data_dom
+        self.model: dde.Model = dde.Model(data, self.net)
+        self.model.compile(optimizer='adam', lr=0)
+        self.model.predict([[0, 0]])
 
     def _vec_grad(r, T) -> List[np.ndarray]:
         d_xy = []
@@ -158,12 +162,10 @@ class PdeELM:
 
     def fit_dom(self) -> np.ndarray:
         data = self.geom.data_dom
-        self.model_: dde.Model = dde.Model(data, self.net)
         X, _, _ = data.train_next_batch()
-        self.model_.compile(optimizer='adam', lr=0)
 
         # build loss matrix
-        pde_pred = self.model_.predict(X, operator=PdeELM._vec_grad)
+        pde_pred = self.model.predict(X, operator=PdeELM._vec_grad)
         A = np.empty((pde_pred[0].shape[0], len(pde_pred)))
         for k, v in enumerate(pde_pred):
                 A[:,k] = v.flatten()
@@ -191,7 +193,7 @@ class PdeELM:
         return (A, b)
 
     def predict(self, X: np.ndarray) -> np.ndarray:
-        hl = self.model_.predict(X)
+        hl = self.model.predict(X)
         return hl.dot(self.w_out)
 
     def get_weights(self) -> List[np.ndarray]:
@@ -233,6 +235,57 @@ class ExactELM:
         H_inv = np.linalg.pinv(H, rcond=1e-10)
         self.weights[-1] = np.dot(H_inv, y)
 
+class ExactELMBiasHL(ExactELM):
+    def __init__(self, pde_elm: PdeELM) -> None:
+        super().__init__(pde_elm)
+        rng = np.random.default_rng(123)
+        self.weights[-1] = rng.random((self.weights[-1].shape[0] + 1, 1)) - 0.5
+
+    def forward_prop(self, X: np.ndarray) -> List[np.ndarray]:
+        H = []
+        for weights in self.weights[:-1]:
+            X = np.dot(X, weights)
+            X = np.tanh(X)
+            H.append(X)
+        X = np.c_[np.ones((X.shape[0], 1)), X]
+        H.append(np.dot(X, self.weights[-1]))
+        return H
+
+    def fit(self, X: np.ndarray) -> None:
+        y = self.geom.exact_sol(X)
+        a_l = self.forward_prop(X)
+        H = a_l[-2]
+        H = np.c_[np.ones((H.shape[0], 1)), H]
+        H_inv = np.linalg.pinv(H, rcond=1e-10)
+        self.weights[-1] = np.dot(H_inv, y)
+
+class ExactELMBias(ExactELM):
+    def __init__(self, pde_elm: PdeELM) -> None:
+        super().__init__(pde_elm)
+        rng = np.random.default_rng(123)
+        for i, w in enumerate(self.weights):
+            bias = rng.random((1, w.shape[1])) - 0.5
+            self.weights[i] = np.r_[bias, w]
+
+    def forward_prop(self, X: np.ndarray) -> List[np.ndarray]:
+        H = []
+        for weights in self.weights[:-1]:
+            X = np.c_[np.ones((X.shape[0], 1)), X]
+            X = np.dot(X, weights)
+            X = np.tanh(X)
+            H.append(X)
+        X = np.c_[np.ones((X.shape[0], 1)), X]
+        H.append(np.dot(X, self.weights[-1]))
+        return H
+
+    def fit(self, X: np.ndarray) -> None:
+        y = self.geom.exact_sol(X)
+        a_l = self.forward_prop(X)
+        H = a_l[-2]
+        H = np.c_[np.ones((H.shape[0], 1)), H]
+        H_inv = np.linalg.pinv(H, rcond=1e-10)
+        self.weights[-1] = np.dot(H_inv, y)
+
 def print_dev_dom(elm) -> None:
     X, _, _ = elm.geom.data_dom.train_next_batch()
     y_pred = elm.predict(X)
@@ -268,16 +321,23 @@ if __name__=="__main__":
     X, _, _ = geom.data_dom.train_next_batch()
 
     pde_elm = PdeELM(net, geom)
-    A_pde, b = pde_elm.fit()
-    #A_pde, b = pde_elm.fit_dom()
+    #A_pde, b = pde_elm.fit()
 
     exact_elm = ExactELM(pde_elm)
+    exact_elm_bias_hl = ExactELMBiasHL(pde_elm)
+    exact_elm_bias = ExactELMBias(pde_elm)
     exact_elm.fit(X)
+    exact_elm_bias_hl.fit(X)
+    exact_elm_bias.fit(X)
 
-    print(f"\nNot trained weights are the same: {compare_elm_inp_weights(exact=exact_elm, pde=pde_elm)}\n")
-    print_dev_dom(pde_elm)
+    #print(f"\nNot trained weights are the same: {compare_elm_inp_weights(exact=exact_elm, pde=pde_elm)}\n")
+    #print_dev_dom(pde_elm)
     print_dev_dom(exact_elm)
+    print_dev_dom(exact_elm_bias_hl)
+    print_dev_dom(exact_elm_bias)
+    ...
 
+"""
     exact_w = exact_elm.weights[-1]
     pde_w = pde_elm.get_weights()[-1]
     exact_y = exact_elm.predict(X)
@@ -292,4 +352,4 @@ if __name__=="__main__":
     rtol = 1e-6
     close = np.isclose(A, A_pde, rtol=rtol)
     print(f"loss matrix is the same (tolerance: {rtol}):\t{close.sum() == A.size}")
-    ...
+"""
