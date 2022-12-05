@@ -9,6 +9,7 @@ from typing import List, Tuple
 dde.config.real.set_float64()
 dde.config.set_default_float("float64")
 from deepxde.backend import tf
+#tf.get_logger().setLevel('ERROR')
 
 if dde.backend.backend_name != 'tensorflow':
     raise Exception("set backend tensorflow with: python -m deepxde.backend.set_default_backend tensorflow")
@@ -309,19 +310,19 @@ def compare_elm_inp_weights(exact: ExactELM, pde: PdeELM) -> bool:
     return True
 
 if __name__=="__main__":
-    num_dom = 2048
-    num_bnd = 512
+    num_dom = 200
+    num_bnd = 500
     num_tst = 101
 
     inp_dim = 2
-    layers = [inp_dim] + [32, 128, 512]
+    layers = [inp_dim] + [16, 64]
     net = FNN2([2] + layers, "tanh", "Glorot uniform")
 
     geom = RectHole(num_dom=num_dom, num_bnd=num_bnd)
     X, _, _ = geom.data_dom.train_next_batch()
 
     pde_elm = PdeELM(net, geom)
-    #A_pde, b = pde_elm.fit()
+    A_pde, b = pde_elm.fit()
 
     exact_elm = ExactELM(pde_elm)
     exact_elm_bias_hl = ExactELMBiasHL(pde_elm)
@@ -330,26 +331,9 @@ if __name__=="__main__":
     exact_elm_bias_hl.fit(X)
     exact_elm_bias.fit(X)
 
-    #print(f"\nNot trained weights are the same: {compare_elm_inp_weights(exact=exact_elm, pde=pde_elm)}\n")
-    #print_dev_dom(pde_elm)
+    print(f"\nNot trained weights are the same: {compare_elm_inp_weights(exact=exact_elm, pde=pde_elm)}\n")
+    print_dev_dom(pde_elm)
     print_dev_dom(exact_elm)
     print_dev_dom(exact_elm_bias_hl)
     print_dev_dom(exact_elm_bias)
     ...
-
-"""
-    exact_w = exact_elm.weights[-1]
-    pde_w = pde_elm.get_weights()[-1]
-    exact_y = exact_elm.predict(X)
-    pde_y = pde_elm.predict(X)
-
-    # calculate loss matrix with help of exact solution: w x b^-1 = A^-1
-    b_inv = np.linalg.pinv(b, rcond=1e-10)
-    w = exact_w
-    A_inv = w.dot(b_inv)
-    A = np.linalg.pinv(A_inv, rcond=1e-10)
-
-    rtol = 1e-6
-    close = np.isclose(A, A_pde, rtol=rtol)
-    print(f"loss matrix is the same (tolerance: {rtol}):\t{close.sum() == A.size}")
-"""
