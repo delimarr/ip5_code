@@ -9,7 +9,7 @@ from typing import List, Tuple
 dde.config.real.set_float64()
 dde.config.set_default_float("float64")
 from deepxde.backend import tf
-#tf.get_logger().setLevel('ERROR')
+tf.get_logger().setLevel('ERROR')
 
 if dde.backend.backend_name != 'tensorflow':
     raise Exception("set backend tensorflow with: python -m deepxde.backend.set_default_backend tensorflow")
