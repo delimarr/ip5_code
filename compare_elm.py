@@ -4,7 +4,9 @@ import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import numpy as np
 import deepxde as dde
+import time
 from typing import List, Tuple
+from concurrent.futures import ThreadPoolExecutor
 
 dde.config.real.set_float64()
 dde.config.set_default_float("float64")
@@ -43,9 +45,10 @@ class FNN2(dde.nn.tensorflow.nn.NN):
                 tf.keras.layers.Dense(
                     units,
                     activation=activation,
-                    use_bias=False,
+                    use_bias=True,
                     kernel_initializer=initializer,
                     kernel_regularizer=self.regularizer,
+                    bias_initializer=initializer
                 )
             )
 
@@ -60,12 +63,14 @@ class FNN2(dde.nn.tensorflow.nn.NN):
         return y
 
 class Geometry:
-    def __init__(self, num_dom: int, num_bnd: int) -> None:
+    def __init__(self, num_dom: int, num_bnd: int, num_tst: int) -> None:
         self.num_dom: int = num_dom
         self.num_bnd: int = num_bnd
+        self.num_tst: int = num_tst
         self.geom: dde.geometry.Geometry
         self.bcs: List[dde.icbc.boundary_conditions.BC]
         self.data_dom: dde.data.Data
+        self.data_test: dde.data.Data
         self.data_bcs: List[dde.data.Data]
 
     def exact_sol(r: np.ndarray) -> np.ndarray:
@@ -85,11 +90,11 @@ class RectHole(Geometry):
     a = 0.4
     b = 1.0
 
-    def __init__(self, num_dom: int, num_bnd: int) -> None:
+    def __init__(self, num_dom: int, num_bnd: int, num_tst: int) -> None:
         a = RectHole.a
         b = RectHole.b
 
-        super().__init__(num_dom, num_bnd)
+        super().__init__(num_dom, num_bnd, num_tst)
 
         self.geom: dde.geometry.Geometry = dde.geometry.Rectangle([-b, -b], [b, b]) - dde.geometry.Disk([0, 0], a / 2)
 
@@ -98,10 +103,12 @@ class RectHole(Geometry):
         self.bcs.append(dde.DirichletBC(geom=self.geom, func=RectHole._exact_sol, on_boundary=RectHole._int_boundary))
         #self.bcs.append(dde.NeumannBC(geom=self.geom, func=RectHole._exact_grad_n, on_boundary=RectHole._hor_boundary))
 
-        self.data_dom = dde.data.PDE(self.geom, RectHole.pde, [], num_domain=num_dom, num_boundary=0, num_test=101, solution=None)
+        self.data_dom = dde.data.PDE(self.geom, RectHole.pde, [], num_domain=num_dom, num_boundary=0, num_test=num_tst, solution=None)
         self.data_bcs = []
         for bc in self.bcs:
-            self.data_bcs.append(dde.data.PDE(self.geom, RectHole.pde, [bc], num_domain=0, num_boundary=num_bnd, num_test=101, solution=__class__._exact_sol))
+            self.data_bcs.append(dde.data.PDE(self.geom, RectHole.pde, [bc], num_domain=0, num_boundary=num_bnd, num_test=num_tst, solution=__class__._exact_sol))
+
+        self.data_test = dde.data.PDE(self.geom, RectHole.full_pde, self.bcs, num_domain=num_dom, num_boundary=num_bnd, num_test=num_tst, solution=RectHole._exact_sol)
 
     def _ver_boundary(r, on_boundary):
         x, _ = r
@@ -155,8 +162,16 @@ class PdeELM:
         self.model.compile(optimizer='adam', lr=0)
         self.model.predict([[0, 0]])
 
+    def _hess(k) -> np.ndarray:
+        r = PdeELM.r_
+        T = PdeELM.T_
+        return dde.grad.hessian(T, r, component=k, i=0, j=0) + dde.grad.hessian(T, r, component=k, i=1, j=1)
+
     def _vec_grad(r, T) -> List[np.ndarray]:
         d_xy = []
+        PdeELM.r_ = r
+        PdeELM.T_ = T
+        k = np.arange(T.shape[1])
         for k in range(T.shape[1]):
             d_xy.append(dde.grad.hessian(T, r, component=k, i=0, j=0) + dde.grad.hessian(T, r, component=k, i=1, j=1))
         return d_xy
@@ -167,9 +182,9 @@ class PdeELM:
 
         # build loss matrix
         pde_pred = self.model.predict(X, operator=PdeELM._vec_grad)
-        A = np.empty((pde_pred[0].shape[0], len(pde_pred)))
+        A = np.zeros((pde_pred[0].shape[0], len(pde_pred) + 1), dtype=np.float64)
         for k, v in enumerate(pde_pred):
-                A[:,k] = v.flatten()
+                A[:,k + 1] = v.flatten()
 
         # build b = -phi
         b = -self.geom.phi(X)
@@ -187,6 +202,8 @@ class PdeELM:
             m.compile(optimizer='adam', lr=0)
             X, b_bc, _ = data_bc.train_next_batch()
             A_bc = m.predict(X)
+            b_hl = np.ones((A_bc.shape[0], 1), dtype=np.float64)
+            A_bc = np.concatenate([b_hl, A_bc], axis=1)
             A = np.concatenate([A, A_bc])
             b = np.concatenate([b, b_bc])
         A_inv = np.linalg.pinv(A, rcond=1e-10)
@@ -195,13 +212,15 @@ class PdeELM:
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         hl = self.model.predict(X)
+        hl = np.c_[np.ones((hl.shape[0], 1)), hl]
         return hl.dot(self.w_out)
 
     def get_weights(self) -> List[np.ndarray]:
         weights = []
         for d in self.net.denses:
-            for w in d.weights:
-                weights.append(w.numpy())
+            w = d.weights[0].numpy()
+            b = d.weights[1].numpy().reshape(1, w.shape[1])
+            weights.append(np.concatenate([b, w]))
         weights.append(self.w_out)
         return weights
 
@@ -213,60 +232,10 @@ class ExactELM:
 
         rng = np.random.default_rng(123)
         for d in pde_elm.net.denses:
-            for w in d.weights:
-                self.weights.append(w.numpy())
-        self.weights.append(rng.random((self.weights[-1].shape[1], 1)) - 0.5)
-
-    def forward_prop(self, X: np.ndarray) -> List[np.ndarray]:
-        H = []
-        for weights in self.weights[:-1]:
-            X = np.dot(X, weights)
-            X = np.tanh(X)
-            H.append(X)
-        H.append(np.dot(X, self.weights[-1]))
-        return H
-
-    def predict(self, X: np.ndarray) -> np.ndarray:
-        return self.forward_prop(X)[-1]
-
-    def fit(self, X: np.ndarray) -> None:
-        y = self.geom.exact_sol(X)
-        a_l = self.forward_prop(X)
-        H = a_l[-2]
-        H_inv = np.linalg.pinv(H, rcond=1e-10)
-        self.weights[-1] = np.dot(H_inv, y)
-
-class ExactELMBiasHL(ExactELM):
-    def __init__(self, pde_elm: PdeELM) -> None:
-        super().__init__(pde_elm)
-        rng = np.random.default_rng(123)
-        self.weights[-1] = rng.random((self.weights[-1].shape[0] + 1, 1)) - 0.5
-
-    def forward_prop(self, X: np.ndarray) -> List[np.ndarray]:
-        H = []
-        for weights in self.weights[:-1]:
-            X = np.dot(X, weights)
-            X = np.tanh(X)
-            H.append(X)
-        X = np.c_[np.ones((X.shape[0], 1)), X]
-        H.append(np.dot(X, self.weights[-1]))
-        return H
-
-    def fit(self, X: np.ndarray) -> None:
-        y = self.geom.exact_sol(X)
-        a_l = self.forward_prop(X)
-        H = a_l[-2]
-        H = np.c_[np.ones((H.shape[0], 1)), H]
-        H_inv = np.linalg.pinv(H, rcond=1e-10)
-        self.weights[-1] = np.dot(H_inv, y)
-
-class ExactELMBias(ExactELM):
-    def __init__(self, pde_elm: PdeELM) -> None:
-        super().__init__(pde_elm)
-        rng = np.random.default_rng(123)
-        for i, w in enumerate(self.weights):
-            bias = rng.random((1, w.shape[1])) - 0.5
-            self.weights[i] = np.r_[bias, w]
+            w = d.weights[0].numpy()
+            b = d.weights[1].numpy().reshape(1, w.shape[1])
+            self.weights.append(np.concatenate([b, w]))
+        self.weights.append(rng.random((self.weights[-1].shape[1] + 1, 1)) - 0.5)
 
     def forward_prop(self, X: np.ndarray) -> List[np.ndarray]:
         H = []
@@ -279,6 +248,9 @@ class ExactELMBias(ExactELM):
         H.append(np.dot(X, self.weights[-1]))
         return H
 
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        return self.forward_prop(X)[-1]
+
     def fit(self, X: np.ndarray) -> None:
         y = self.geom.exact_sol(X)
         a_l = self.forward_prop(X)
@@ -288,12 +260,13 @@ class ExactELMBias(ExactELM):
         self.weights[-1] = np.dot(H_inv, y)
 
 def print_dev_dom(elm) -> None:
-    X, _, _ = elm.geom.data_dom.train_next_batch()
-    y_pred = elm.predict(X)
-    y_true = elm.geom.exact_sol(X)
-    deviation = rms(y_pred, y_true)
-    print(f"{elm.__class__.__name__} RMS Deviation train:\t{deviation}")
-    Xt, _, _ = elm.geom.data_dom.test()
+    X, _, _ = elm.geom.data_test.train_next_batch()
+    y_pred_train = elm.predict(X)
+    y_true_train = elm.geom.exact_sol(X)
+    deviation_train = rms(y_pred_train, y_true_train)
+    print(f"{elm.__class__.__name__} RMS Deviation test:\t{deviation_train}\n")
+
+    Xt, _, _ = elm.geom.data_test.test()
     y_pred_test = elm.predict(Xt)
     y_true_test = elm.geom.exact_sol(Xt)
     deviation_test = rms(y_pred_test, y_true_test)
@@ -310,30 +283,26 @@ def compare_elm_inp_weights(exact: ExactELM, pde: PdeELM) -> bool:
     return True
 
 if __name__=="__main__":
-    num_dom = 200
-    num_bnd = 500
+    num_dom = 2048
+    num_bnd = 512
     num_tst = 101
 
     inp_dim = 2
-    layers = [inp_dim] + [16, 64]
+    layers = [inp_dim] + [32, 128, 512, 2048]
+    layers = [inp_dim] + [8]
     net = FNN2([2] + layers, "tanh", "Glorot uniform")
 
-    geom = RectHole(num_dom=num_dom, num_bnd=num_bnd)
+    geom = RectHole(num_dom=num_dom, num_bnd=num_bnd, num_tst=num_tst)
     X, _, _ = geom.data_dom.train_next_batch()
 
+    s = time.perf_counter()
     pde_elm = PdeELM(net, geom)
     A_pde, b = pde_elm.fit()
+    print(f"PDE ELM training in seconds: {time.perf_counter() - s}")
 
     exact_elm = ExactELM(pde_elm)
-    exact_elm_bias_hl = ExactELMBiasHL(pde_elm)
-    exact_elm_bias = ExactELMBias(pde_elm)
     exact_elm.fit(X)
-    exact_elm_bias_hl.fit(X)
-    exact_elm_bias.fit(X)
 
     print(f"\nNot trained weights are the same: {compare_elm_inp_weights(exact=exact_elm, pde=pde_elm)}\n")
     print_dev_dom(pde_elm)
     print_dev_dom(exact_elm)
-    print_dev_dom(exact_elm_bias_hl)
-    print_dev_dom(exact_elm_bias)
-    ...

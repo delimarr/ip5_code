@@ -158,8 +158,8 @@ def pde_appr(elm: ELM, x: np.ndarray, eps: float = 1e-8) -> np.ndarray:
 
 if __name__=="__main__":
     g = RectHole()
-    X_train = cp.array(g.get_X(num_dom=400, num_bnd=0), dtype=cp.float64)
-    #X_train = cp.array(g.get_X(num_dom=2048, num_bnd=512), dtype=cp.float64)
+    #X_train = cp.array(g.get_X(num_dom=400, num_bnd=0), dtype=cp.float64)
+    X_train = cp.array(g.get_X(num_dom=2048, num_bnd=512), dtype=cp.float64)
     #X_train = cp.array(g.get_X(num_dom=16384, num_bnd=4096), dtype=cp.float64)
     y_train = cp.array(g.exact_sol(X_train), dtype=cp.float64)
 
