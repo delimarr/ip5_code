@@ -127,6 +127,7 @@ class PdeELM:
         """
         X_dom_tf = tf.convert_to_tensor(X_dom)
         loss = _get_loss(self.model, X_dom_tf)
+        # TO DO: replace zeros with coefficent of T(x) * HL in PDE
         A = np.c_[np.zeros((loss.shape[0], 1), dtype=np.float64), loss]
         b = -phi_dom
         for X_bc, y_bc in data_bcs:
