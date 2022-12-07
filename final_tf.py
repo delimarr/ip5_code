@@ -5,6 +5,9 @@ import time
 from typing import List, Tuple
 
 import deepxde as dde
+
+if dde.backend.backend_name != 'tensorflow':
+    raise Exception("set backend tensorflow with: python -m deepxde.backend.set_default_backend tensorflow")
 import numpy as np
 
 gpu = tf.config.list_physical_devices('GPU')
