@@ -162,11 +162,6 @@ class PdeELM:
         self.model.compile(optimizer='adam', lr=0)
         self.model.predict([[0, 0]])
 
-    def _hess(k) -> np.ndarray:
-        r = PdeELM.r_
-        T = PdeELM.T_
-        return dde.grad.hessian(T, r, component=k, i=0, j=0) + dde.grad.hessian(T, r, component=k, i=1, j=1)
-
     def _vec_grad(r, T) -> List[np.ndarray]:
         d_xy = []
         PdeELM.r_ = r
