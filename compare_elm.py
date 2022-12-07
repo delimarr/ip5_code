@@ -281,12 +281,12 @@ def compare_elm_inp_weights(exact: ExactELM, pde: PdeELM) -> bool:
     return True
 
 if __name__=="__main__":
-    num_dom = 100
+    num_dom = 3
     num_bnd = 5
     num_tst = 101
 
     inp_dim = 2
-    layers = [inp_dim] + [32, 128]
+    layers = [inp_dim] + [4]
     net = FNN2([2] + layers, "tanh", "Glorot uniform")
 
     geom = RectHole(num_dom=num_dom, num_bnd=num_bnd, num_tst=num_tst)

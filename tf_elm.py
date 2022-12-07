@@ -3,7 +3,9 @@ import numpy as np
 import deepxde as dde
 from compare_elm import RectHole
 import time
-
+# comment out to enable gpu
+gpu = tf.config.list_physical_devices('GPU')
+print(gpu)
 
 def get_r(model, X_r):
     # A tf.GradientTape is used to compute derivatives in TensorFlow
@@ -39,7 +41,7 @@ if __name__=="__main__":
     model.add(tf.keras.Input(2))
     initializer_w = tf.keras.initializers.RandomNormal(mean=0.0, stddev=0.5, seed=123)
     initializer_b = tf.keras.initializers.RandomNormal(mean=0.0, stddev=0.5, seed=321)
-    layers = [32, 128]
+    layers = [32, 128, 512, 2048]
     for layer in layers:
         model.add(tf.keras.layers.Dense(layer,
                     activation=tf.keras.activations.get('tanh'),
@@ -47,7 +49,7 @@ if __name__=="__main__":
                     use_bias=True,
                     bias_initializer=initializer_b))
     
-    num_dom = 100
+    num_dom = 2048
     num_bnd = 5
     num_tst = 101
 
