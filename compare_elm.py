@@ -37,7 +37,8 @@ class FNN2(dde.nn.tensorflow.nn.NN):
         self.regularizer = regularizers.get(regularization)
         self.dropout_rate = dropout_rate
         activation = activations.get(activation)
-        initializer = tf.keras.initializers.RandomNormal(mean=0.0, stddev=0.5, seed=123)
+        initializer_w = tf.keras.initializers.RandomNormal(mean=0.0, stddev=0.5, seed=123)
+        initializer_b = tf.keras.initializers.RandomNormal(mean=0.0, stddev=0.5, seed=321)
 
         self.denses = []
         for units in layer_sizes[2:]:
@@ -46,9 +47,9 @@ class FNN2(dde.nn.tensorflow.nn.NN):
                     units,
                     activation=activation,
                     use_bias=True,
-                    kernel_initializer=initializer,
+                    kernel_initializer=initializer_w,
                     kernel_regularizer=self.regularizer,
-                    bias_initializer=initializer
+                    bias_initializer=initializer_b
                 )
             )
 
@@ -176,10 +177,12 @@ class PdeELM:
         X, _, _ = data.train_next_batch()
 
         # build loss matrix
+        s = time.perf_counter()
         pde_pred = self.model.predict(X, operator=PdeELM._vec_grad)
         A = np.zeros((pde_pred[0].shape[0], len(pde_pred) + 1), dtype=np.float64)
         for k, v in enumerate(pde_pred):
                 A[:,k + 1] = v.flatten()
+        print(f"time compare in seconds: {time.perf_counter() - s}")
 
         # build b = -phi
         b = -self.geom.phi(X)
@@ -278,13 +281,12 @@ def compare_elm_inp_weights(exact: ExactELM, pde: PdeELM) -> bool:
     return True
 
 if __name__=="__main__":
-    num_dom = 2048
-    num_bnd = 512
+    num_dom = 100
+    num_bnd = 5
     num_tst = 101
 
     inp_dim = 2
-    layers = [inp_dim] + [32, 128, 512, 2048]
-    layers = [inp_dim] + [8]
+    layers = [inp_dim] + [32, 128]
     net = FNN2([2] + layers, "tanh", "Glorot uniform")
 
     geom = RectHole(num_dom=num_dom, num_bnd=num_bnd, num_tst=num_tst)
