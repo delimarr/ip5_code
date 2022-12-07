@@ -175,10 +175,13 @@ def _get_loss(model: tf.keras.Sequential, X_r: tf.Tensor) -> np.ndarray:
 
         for k in range(u.shape[1]):
             hl = u[:,k]
+            # TO DO: generalize derivatives
             u_x = tape.gradient(hl, x)
             u_y = tape.gradient(hl, y)
             u_xx = tape.gradient(u_x, x)
             u_yy = tape.gradient(u_y, y)
+
+            # TO DO call PDE with generalized derivatives
             col = (u_xx + u_yy).numpy()
             A[:, k] = col.flatten()
     del tape
