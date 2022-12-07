@@ -3,7 +3,6 @@ import numpy as np
 import deepxde as dde
 from compare_elm import RectHole
 import time
-# comment out to enable gpu
 gpu = tf.config.list_physical_devices('GPU')
 print(gpu)
 

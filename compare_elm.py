@@ -6,7 +6,6 @@ import numpy as np
 import deepxde as dde
 import time
 from typing import List, Tuple
-from concurrent.futures import ThreadPoolExecutor
 
 dde.config.real.set_float64()
 dde.config.set_default_float("float64")
@@ -281,12 +280,12 @@ def compare_elm_inp_weights(exact: ExactELM, pde: PdeELM) -> bool:
     return True
 
 if __name__=="__main__":
-    num_dom = 3
-    num_bnd = 5
+    num_dom = 400
+    num_bnd = 100
     num_tst = 101
 
     inp_dim = 2
-    layers = [inp_dim] + [4]
+    layers = [inp_dim] + [32]
     net = FNN2([2] + layers, "tanh", "Glorot uniform")
 
     geom = RectHole(num_dom=num_dom, num_bnd=num_bnd, num_tst=num_tst)
