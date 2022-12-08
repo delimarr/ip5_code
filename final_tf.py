@@ -1,10 +1,11 @@
 import tensorflow as tf
-
 tf.get_logger().setLevel('ERROR')
+
 import time
 from typing import List, Tuple
 
 import deepxde as dde
+dde.config.set_random_seed(7913)
 
 if dde.backend.backend_name != 'tensorflow':
     raise Exception("set backend tensorflow with: python -m deepxde.backend.set_default_backend tensorflow")
@@ -53,9 +54,23 @@ class RectHole(Geometry):
         self.geom: dde.geometry.Geometry = dde.geometry.Rectangle([-b, -b], [b, b]) - dde.geometry.Disk([0, 0], a / 2)
 
         self.bcs: List[dde.icbc.boundary_conditions.BC] = []
-        #self.bcs.append(dde.DirichletBC(geom=self.geom, func=RectHole._exact_sol, on_boundary=RectHole._ver_boundary))
-        #self.bcs.append(dde.DirichletBC(geom=self.geom, func=RectHole._exact_sol, on_boundary=RectHole._int_boundary))
+        self.bcs.append(dde.DirichletBC(geom=self.geom, func=RectHole._exact_sol, on_boundary=RectHole._ver_boundary))
+        self.bcs.append(dde.DirichletBC(geom=self.geom, func=RectHole._exact_sol, on_boundary=RectHole._int_boundary))
         self.bcs.append(dde.NeumannBC(geom=self.geom, func=RectHole._exact_grad_n, on_boundary=RectHole._hor_boundary))
+        """
+        bcs = {'Dirichlet': [[None, ver_boundary], [None, int_boundary]], 'Neumann': [[exact_grad_n, hor_boundary]]}
+        D_bcs = []
+        for bc in bcs['Dirichlet']:
+            if bc[0] is None:
+                f = exact_sol
+            else:
+                f = bc[0]
+            D_bcs.append(dde.DirichletBC(geom, f, bc[1]))
+
+        N_bcs = []
+        for bc in bcs['Neumann']:
+            N_bcs.append(dde.NeumannBC(geom, bc[0], bc[1]))
+        """
 
         self.data_dom = dde.data.PDE(self.geom, RectHole.pde, [], num_domain=num_dom, num_boundary=0, num_test=num_tst, solution=None)
         self.data_bcs = []
@@ -223,10 +238,10 @@ def rms(y_pred: np.ndarray, y_true: np.ndarray) -> float:
     return ((y_pred - y_true)**2).mean()**0.5
 
 def main() -> None:
-    num_dom = 250
-    num_bnd = 90
-    num_tst = 340
-    layers = [8, 32, 128, 512]
+    num_dom = 13
+    num_bnd = 5
+    num_tst = 11
+    layers = [4]
 
     geom = RectHole(num_dom=num_dom, num_bnd=num_bnd, num_tst=num_tst)
     X_dom, _, _ = geom.data_dom.train_next_batch()
@@ -239,7 +254,7 @@ def main() -> None:
     pde_elm = PdeELM(layers, seed=(123, 456))
     s = time.perf_counter()
     pde_elm.fit(X_dom, phi_dom, data_bcs)
-    print(f"Training in seconds: {time.perf_counter() - s}")
+    print(f"\nTraining in seconds: {time.perf_counter() - s}")
     print_dev_dom(pde_elm, geom)
 
 
