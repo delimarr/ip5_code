@@ -2,7 +2,7 @@ import tensorflow as tf
 tf.get_logger().setLevel('ERROR')
 
 import time
-from typing import List, Tuple
+from typing import List, Tuple, Callable
 
 import deepxde as dde
 dde.config.set_random_seed(7913)
@@ -58,6 +58,7 @@ class RectHole(Geometry):
         self.bcs.append(dde.DirichletBC(geom=self.geom, func=RectHole._exact_sol, on_boundary=RectHole._int_boundary))
         self.bcs.append(dde.NeumannBC(geom=self.geom, func=RectHole._exact_grad_n, on_boundary=RectHole._hor_boundary))
         """
+        # code snippet boundary conditions from notebook
         bcs = {'Dirichlet': [[None, ver_boundary], [None, int_boundary]], 'Neumann': [[exact_grad_n, hor_boundary]]}
         D_bcs = []
         for bc in bcs['Dirichlet']:
@@ -165,6 +166,44 @@ class PdeELM:
         hl = self.model(X)
         hl = np.c_[np.ones((hl.shape[0], 1)), hl]
         return hl.dot(self.w_out_)
+
+class ExactELM:
+    def __init__(self, pde_elm: PdeELM) -> None:
+        self.pde_elm: PdeELM = pde_elm
+        self.weights = []
+
+        pde_w = pde_elm.model.get_weights()
+        for i in range(int(len(pde_w) / 2)):
+            w = pde_w[2*i]
+            b = pde_w[2*i + 1].reshape(1, w.shape[1])
+            self.weights.append(np.concatenate([b, w]))
+        rng = np.random.default_rng(123)
+        self.weights.append(rng.random((self.weights[-1].shape[1] + 1, 1)) - 0.5)
+
+    def forward_prop(self, X: np.ndarray) -> List[np.ndarray]:
+        H = []
+        for weights in self.weights[:-1]:
+            X = np.c_[np.ones((X.shape[0], 1)), X]
+            X = np.dot(X, weights)
+            X = np.tanh(X)
+            H.append(X)
+        X = np.c_[np.ones((X.shape[0], 1)), X]
+        H.append(np.dot(X, self.weights[-1]))
+        return H
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        return self.forward_prop(X)[-1]
+
+    def fit(self, X_dom: np.ndarray, X_bc: List[np.ndarray], exact_sol: Callable) -> None:
+        X = X_dom
+        for bc in X_bc:
+            X = np.concatenate([X, bc])
+        y = exact_sol(X)
+        a_l = self.forward_prop(X)
+        H = a_l[-2]
+        H = np.c_[np.ones((H.shape[0], 1)), H]
+        H_inv = np.linalg.pinv(H, rcond=1e-10)
+        self.weights[-1] = np.dot(H_inv, y)
     
 def _init_model(layers: List[int], seed: Tuple[int, int] = None) -> tf.keras.Sequential:
     model = tf.keras.Sequential()
@@ -238,24 +277,34 @@ def rms(y_pred: np.ndarray, y_true: np.ndarray) -> float:
     return ((y_pred - y_true)**2).mean()**0.5
 
 def main() -> None:
-    num_dom = 13
-    num_bnd = 5
-    num_tst = 11
-    layers = [4]
+    num_dom = 250
+    num_bnd = 90
+    num_tst = 340
+    layers = [8, 32, 128, 256]
 
     geom = RectHole(num_dom=num_dom, num_bnd=num_bnd, num_tst=num_tst)
     X_dom, _, _ = geom.data_dom.train_next_batch()
     phi_dom = geom.phi(X_dom)
     data_bcs = []
+    X_bc = []
     for data_bc in geom.data_bcs:
         X, b_bc, _ = data_bc.train_next_batch()
         data_bcs.append((X, b_bc))
+        X_bc.append(X)
     
     pde_elm = PdeELM(layers, seed=(123, 456))
     s = time.perf_counter()
     pde_elm.fit(X_dom, phi_dom, data_bcs)
     print(f"\nTraining in seconds: {time.perf_counter() - s}")
     print_dev_dom(pde_elm, geom)
+
+    exact_elm = ExactELM(pde_elm)
+    s = time.perf_counter()
+    exact_elm.fit(X_dom, X_bc, geom.exact_sol)
+    print(f"\nTraining in seconds: {time.perf_counter() - s}")
+    print_dev_dom(exact_elm, geom)
+    ...
+
 
 
 if __name__=="__main__":
