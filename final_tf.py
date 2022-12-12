@@ -1,10 +1,13 @@
 import tensorflow as tf
 tf.get_logger().setLevel('ERROR')
+tf.keras.backend.set_floatx('float32')
 
 import time
 from typing import List, Tuple, Callable
 
 import deepxde as dde
+dde.config.real.set_float32()
+dde.config.set_default_float("float32")
 dde.config.set_random_seed(7913)
 
 if dde.backend.backend_name != 'tensorflow':
@@ -13,7 +16,7 @@ import numpy as np
 
 gpu = tf.config.list_physical_devices('GPU')
 print(gpu)
-GPU_FLG: bool = False
+GPU_FLG: bool = True
 if len(gpu) == 0:
     GPU_FLG = False
 
@@ -56,7 +59,8 @@ class RectHole(Geometry):
         self.bcs: List[dde.icbc.boundary_conditions.BC] = []
         self.bcs.append(dde.DirichletBC(geom=self.geom, func=RectHole._exact_sol, on_boundary=RectHole._ver_boundary))
         self.bcs.append(dde.DirichletBC(geom=self.geom, func=RectHole._exact_sol, on_boundary=RectHole._int_boundary))
-        self.bcs.append(dde.NeumannBC(geom=self.geom, func=RectHole._exact_grad_n, on_boundary=RectHole._hor_boundary))
+        self.bcs.append(dde.DirichletBC(geom=self.geom, func=RectHole._exact_sol, on_boundary=RectHole._hor_boundary))
+        #self.bcs.append(dde.NeumannBC(geom=self.geom, func=RectHole._exact_grad_n, on_boundary=RectHole._hor_boundary))
         """
         # code snippet boundary conditions from notebook
         bcs = {'Dirichlet': [[None, ver_boundary], [None, int_boundary]], 'Neumann': [[exact_grad_n, hor_boundary]]}
@@ -178,7 +182,7 @@ class ExactELM:
             b = pde_w[2*i + 1].reshape(1, w.shape[1])
             self.weights.append(np.concatenate([b, w]))
         rng = np.random.default_rng(123)
-        self.weights.append(rng.random((self.weights[-1].shape[1] + 1, 1)) - 0.5)
+        self.weights.append(rng.random((self.weights[-1].shape[1] + 1, 1), dtype=np.float64) - 0.5)
 
     def forward_prop(self, X: np.ndarray) -> List[np.ndarray]:
         H = []
@@ -276,11 +280,18 @@ def rms(y_pred: np.ndarray, y_true: np.ndarray) -> float:
     """
     return ((y_pred - y_true)**2).mean()**0.5
 
+def compare_hl(pde: PdeELM, exact: ExactELM, X: np.ndarray) -> bool:
+    yp = pde.model.predict(X)
+    ye = exact.forward_prop(X)[-2]
+    diff = np.isclose(yp, ye, rtol=1e-8)
+    return np.sum(diff) == diff.size
+
+
 def main() -> None:
     num_dom = 250
     num_bnd = 90
     num_tst = 340
-    layers = [8, 32, 128, 256]
+    layers = [32]
 
     geom = RectHole(num_dom=num_dom, num_bnd=num_bnd, num_tst=num_tst)
     X_dom, _, _ = geom.data_dom.train_next_batch()
@@ -303,6 +314,7 @@ def main() -> None:
     exact_elm.fit(X_dom, X_bc, geom.exact_sol)
     print(f"\nTraining in seconds: {time.perf_counter() - s}")
     print_dev_dom(exact_elm, geom)
+    print(f"Same HL output: {compare_hl(pde_elm, exact_elm, X)}")
     ...
 
 
