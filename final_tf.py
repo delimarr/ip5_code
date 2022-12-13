@@ -1,17 +1,12 @@
 import tensorflow as tf
 tf.get_logger().setLevel('ERROR')
-tf.keras.backend.set_floatx('float32')
 
 import deepxde as dde
-dde.config.real.set_float32()
-dde.config.set_default_float("float32")
 dde.config.set_random_seed(7913)
 if dde.backend.backend_name != 'tensorflow':
     raise Exception("set backend tensorflow with: python -m deepxde.backend.set_default_backend tensorflow")
 
 import numpy as np
-DTYPE = np.float32
-
 import time
 from typing import List, Tuple, Callable
 
@@ -19,6 +14,18 @@ gpu = tf.config.list_physical_devices('GPU')
 GPU_FLG: bool = True
 if len(gpu) == 0:
     GPU_FLG = False
+
+DTYPE: str = "float64"
+dde.config.set_default_float(DTYPE)
+tf.keras.backend.set_floatx(DTYPE)
+if DTYPE == "float32":
+    dde.config.real.set_float32()
+    DTYPE = np.float32
+elif DTYPE == "float64":
+    dde.config.real.set_float64()
+    DTYPE = np.float64
+else:
+    raise Exception("Choose DTYPE between float32 and float64")
 
 class Geometry:
     def __init__(self, num_dom: int, num_bnd: int, num_tst: int) -> None:
