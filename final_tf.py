@@ -2,20 +2,20 @@ import tensorflow as tf
 tf.get_logger().setLevel('ERROR')
 tf.keras.backend.set_floatx('float32')
 
-import time
-from typing import List, Tuple, Callable
-
 import deepxde as dde
 dde.config.real.set_float32()
 dde.config.set_default_float("float32")
 dde.config.set_random_seed(7913)
-
 if dde.backend.backend_name != 'tensorflow':
     raise Exception("set backend tensorflow with: python -m deepxde.backend.set_default_backend tensorflow")
+
 import numpy as np
+DTYPE = np.float32
+
+import time
+from typing import List, Tuple, Callable
 
 gpu = tf.config.list_physical_devices('GPU')
-print(gpu)
 GPU_FLG: bool = True
 if len(gpu) == 0:
     GPU_FLG = False
@@ -148,11 +148,11 @@ class PdeELM:
         X_dom_tf = tf.convert_to_tensor(X_dom)
         loss = _get_loss(self.model, X_dom_tf)
         # TO DO: replace zeros with coefficent of T(x) * HL in PDE
-        A = np.c_[np.zeros((loss.shape[0], 1), dtype=np.float64), loss]
+        A = np.c_[np.zeros((loss.shape[0], 1), dtype=DTYPE), loss]
         b = -phi_dom
         for X_bc, y_bc in data_bcs:
             A_bc = self.model(X_bc)
-            A_bc = np.c_[np.ones((A_bc.shape[0], 1), dtype=np.float64), A_bc]
+            A_bc = np.c_[np.ones((A_bc.shape[0], 1), dtype=DTYPE), A_bc]
             A = np.concatenate([A, A_bc])
             b = np.concatenate([b, y_bc])
         A_inv = np.linalg.pinv(A, rcond=1e-10)
@@ -182,17 +182,17 @@ class ExactELM:
             b = pde_w[2*i + 1].reshape(1, w.shape[1])
             self.weights.append(np.concatenate([b, w]))
         rng = np.random.default_rng(123)
-        self.weights.append(rng.random((self.weights[-1].shape[1] + 1, 1), dtype=np.float64) - 0.5)
+        self.weights.append(rng.random((self.weights[-1].shape[1] + 1, 1), dtype=DTYPE) - 0.5)
 
     def forward_prop(self, X: np.ndarray) -> List[np.ndarray]:
         H = []
         for weights in self.weights[:-1]:
             X = np.c_[np.ones((X.shape[0], 1)), X]
-            X = np.dot(X, weights)
+            X = np.matmul(X, weights, dtype=DTYPE)
             X = np.tanh(X)
             H.append(X)
         X = np.c_[np.ones((X.shape[0], 1)), X]
-        H.append(np.dot(X, self.weights[-1]))
+        H.append(np.matmul(X, self.weights[-1], dtype=DTYPE))
         return H
 
     def predict(self, X: np.ndarray) -> np.ndarray:
@@ -283,7 +283,7 @@ def rms(y_pred: np.ndarray, y_true: np.ndarray) -> float:
 def compare_hl(pde: PdeELM, exact: ExactELM, X: np.ndarray) -> bool:
     yp = pde.model.predict(X)
     ye = exact.forward_prop(X)[-2]
-    diff = np.isclose(yp, ye, rtol=1e-8)
+    diff = np.isclose(yp, ye, rtol=1e-5)
     return np.sum(diff) == diff.size
 
 
