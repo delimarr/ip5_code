@@ -33,10 +33,10 @@ class Geometry:
         self.num_bnd: int = num_bnd
         self.num_tst: int = num_tst
         self.geom: dde.geometry.Geometry
-        self.bcs: List[dde.icbc.boundary_conditions.BC]
+        self.dirichlet_bcs: List[dde.icbc.boundary_conditions.BC]
         self.data_dom: dde.data.Data
         self.data_test: dde.data.Data
-        self.data_bcs: List[dde.data.Data]
+        self.dirichlet_bcs: List[dde.data.Data]
 
     def exact_sol(r: np.ndarray) -> np.ndarray:
         raise NotImplementedError
@@ -63,11 +63,13 @@ class RectHole(Geometry):
 
         self.geom: dde.geometry.Geometry = dde.geometry.Rectangle([-b, -b], [b, b]) - dde.geometry.Disk([0, 0], a / 2)
 
-        self.bcs: List[dde.icbc.boundary_conditions.BC] = []
-        self.bcs.append(dde.DirichletBC(geom=self.geom, func=RectHole._exact_sol, on_boundary=RectHole._ver_boundary))
-        self.bcs.append(dde.DirichletBC(geom=self.geom, func=RectHole._exact_sol, on_boundary=RectHole._int_boundary))
-        self.bcs.append(dde.DirichletBC(geom=self.geom, func=RectHole._exact_sol, on_boundary=RectHole._hor_boundary))
-        #self.bcs.append(dde.NeumannBC(geom=self.geom, func=RectHole._exact_grad_n, on_boundary=RectHole._hor_boundary))
+        self.dirichlet_bcs: List[dde.icbc.boundary_conditions.DirichletBC] = []
+        self.dirichlet_bcs.append(dde.DirichletBC(geom=self.geom, func=RectHole._exact_sol, on_boundary=RectHole._ver_boundary))
+        self.dirichlet_bcs.append(dde.DirichletBC(geom=self.geom, func=RectHole._exact_sol, on_boundary=RectHole._int_boundary))
+        self.dirichlet_bcs.append(dde.DirichletBC(geom=self.geom, func=RectHole._exact_sol, on_boundary=RectHole._hor_boundary))
+
+        self.neumann_bcs: List[dde.icbc.boundary_conditions.NeumannBC] = []
+        self.neumann_bcs.append(dde.NeumannBC(geom=self.geom, func=RectHole._exact_grad_n, on_boundary=RectHole._hor_boundary))
         """
         # code snippet boundary conditions from notebook
         bcs = {'Dirichlet': [[None, ver_boundary], [None, int_boundary]], 'Neumann': [[exact_grad_n, hor_boundary]]}
@@ -85,11 +87,16 @@ class RectHole(Geometry):
         """
 
         self.data_dom = dde.data.PDE(self.geom, RectHole.pde, [], num_domain=num_dom, num_boundary=0, num_test=num_tst, solution=None)
-        self.data_bcs = []
-        for bc in self.bcs:
-            self.data_bcs.append(dde.data.PDE(self.geom, RectHole.pde, [bc], num_domain=0, num_boundary=num_bnd, num_test=num_tst, solution=__class__._exact_sol))
 
-        self.data_test = dde.data.PDE(self.geom, RectHole.full_pde, self.bcs, num_domain=num_dom, num_boundary=num_bnd, num_test=num_tst, solution=RectHole._exact_sol)
+        self.data_dirichlet: List[dde.data.PDE] = []
+        for bc in self.dirichlet_bcs:
+            self.data_dirichlet.append(dde.data.PDE(self.geom, RectHole.pde, [bc], num_domain=0, num_boundary=num_bnd, num_test=num_tst, solution=__class__._exact_sol))
+
+        self.data_neumann: List[dde.data.PDE] = []
+        for bc in self.neumann_bcs:
+            self.data_neumann.append(dde.data.PDE(self.geom, RectHole.pde, [bc], num_domain=0, num_boundary=num_bnd, num_test=num_tst, solution=__class__._exact_grad_n))
+
+        self.data_test = dde.data.PDE(self.geom, RectHole.full_pde, self.dirichlet_bcs + self.neumann_bcs, num_domain=num_dom, num_boundary=num_bnd, num_test=num_tst, solution=RectHole._exact_sol)
 
     def _ver_boundary(r, on_boundary):
         x, _ = r
@@ -103,7 +110,6 @@ class RectHole(Geometry):
         a = RectHole.a
         b = RectHole.b
         x = r[:, 0:1]
-        _ = r[:, 1:]
         return b * (2 - a / (x**2 + b**2)**0.5)
 
     def _hor_boundary(r, on_boundary):
@@ -144,20 +150,20 @@ class PdeELM:
         """
         self.model: tf.keras.Sequential = _init_model(layers=layers, seed=seed)
 
-    def fit(self, X_dom: np.ndarray, phi_dom: np.ndarray, data_bcs: List[Tuple[np.ndarray, np.ndarray]] = []) -> None:
+    def fit(self, X_dom: np.ndarray, phi_dom: np.ndarray, dirichlet_bcs: List[Tuple[np.ndarray, np.ndarray]] = []) -> None:
         """Fit model to PDE-Loss and given boundary conditions.
 
         Args:
             X_dom (np.ndarray): Input on domain.
             phi_dom (np.ndarray): not linear part of pde
-            data_bcs (List[Tuple[np.ndarray, np.ndarray]], optional): Containes tuple of points on boundary and solution. Defaults to [].
+            dirichlet_bcs (List[Tuple[np.ndarray, np.ndarray]], optional): Containes tuple of points on boundary and solution. Defaults to [].
         """
         X_dom_tf = tf.convert_to_tensor(X_dom)
         loss = _get_loss(self.model, X_dom_tf)
         # TO DO: replace zeros with coefficent of T(x) * HL in PDE
         A = np.c_[np.zeros((loss.shape[0], 1), dtype=DTYPE), loss]
         b = -phi_dom
-        for X_bc, y_bc in data_bcs:
+        for X_bc, y_bc in dirichlet_bcs:
             A_bc = self.model(X_bc)
             A_bc = np.c_[np.ones((A_bc.shape[0], 1), dtype=DTYPE), A_bc]
             A = np.concatenate([A, A_bc])
@@ -243,7 +249,7 @@ def get_grad(model: tf.keras.Sequential, X_r: tf.Tensor, r: int, d: int = 1) -> 
     Args:
         model (tf.keras.Sequential): model
         X_r (tf.Tensor): Input Matrix
-        r (int): Index of feature
+        r (int): index of feature
         d (int): which derivative, d > 0. Default is 1. 
 
     Returns:
@@ -316,16 +322,16 @@ def main() -> None:
     geom = RectHole(num_dom=num_dom, num_bnd=num_bnd, num_tst=num_tst)
     X_dom, _, _ = geom.data_dom.train_next_batch()
     phi_dom = geom.phi(X_dom)
-    data_bcs = []
+    dirichlet_bcs = []
     X_bc = []
-    for data_bc in geom.data_bcs:
+    for data_bc in geom.data_dirichlet:
         X, b_bc, _ = data_bc.train_next_batch()
-        data_bcs.append((X, b_bc))
+        dirichlet_bcs.append((X, b_bc))
         X_bc.append(X)
     
     pde_elm = PdeELM(layers, seed=(123, 456))
     s = time.perf_counter()
-    pde_elm.fit(X_dom, phi_dom, data_bcs)
+    pde_elm.fit(X_dom, phi_dom, dirichlet_bcs)
     print(f"\nTraining in seconds: {time.perf_counter() - s}")
     print_dev_dom(pde_elm, geom)
 
@@ -335,7 +341,6 @@ def main() -> None:
     print(f"\nTraining in seconds: {time.perf_counter() - s}")
     print_dev_dom(exact_elm, geom)
     print(f"Same HL output: {compare_hl(pde_elm, exact_elm, X)}")
-    get_grad(pde_elm.model, tf.convert_to_tensor(X_dom), 0)
     ...
 
 
