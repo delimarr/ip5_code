@@ -233,28 +233,41 @@ def _init_model(layers: List[int], seed: Tuple[int, int] = None) -> tf.keras.Seq
     return model
 
 def _get_loss(model: tf.keras.Sequential, X_r: tf.Tensor) -> np.ndarray:
+    u_xx = get_grad(model, X_r, 0, 2)
+    u_yy = get_grad(model, X_r, 1, 2)
+    return u_xx + u_yy
+
+def get_grad(model: tf.keras.Sequential, X_r: tf.Tensor, r: int, d: int = 1) -> np.ndarray:
+    """Calculate the dth derivative from the model at r.
+
+    Args:
+        model (tf.keras.Sequential): model
+        X_r (tf.Tensor): Input Matrix
+        r (int): Index of feature
+        d (int): which derivative, d > 0. Default is 1. 
+
+    Returns:
+        np.ndarray: gradient
+    """
     with tf.GradientTape(persistent=True) as tape:
-        x, y = X_r[:, 0:1], X_r[:,1:2]
+        cols = []
+        for i in range(X_r.shape[1]):
+            cols.append(X_r[:, i])
+            if r == i:
+                tape.watch(cols[i])
 
-        tape.watch(x)
-        tape.watch(y)
+        X = tf.stack(cols, axis=1)
+        u = model(X)
 
-        u = model(tf.stack([x[:,0], y[:,0]], axis=1))
-        A = np.empty((X_r.shape[0], u.shape[1]))
-
+        G = np.empty((X_r.shape[0], u.shape[1]), dtype= DTYPE)
         for k in range(u.shape[1]):
-            hl = u[:,k]
-            # TO DO: generalize derivatives
-            u_x = tape.gradient(hl, x)
-            u_y = tape.gradient(hl, y)
-            u_xx = tape.gradient(u_x, x)
-            u_yy = tape.gradient(u_y, y)
-
-            # TO DO call PDE with generalized derivatives
-            col = (u_xx + u_yy).numpy()
-            A[:, k] = col.flatten()
+            u_x = u[:,k]
+            x = cols[r]
+            for _ in range(d):
+                u_x = tape.gradient(u_x, x)
+            G[:, k] = u_x.numpy()
     del tape
-    return A
+    return G
 
 def print_dev_dom(elm: PdeELM, geom: Geometry) -> None:
     """Print deviation for trained elm on given geometry.
@@ -322,6 +335,7 @@ def main() -> None:
     print(f"\nTraining in seconds: {time.perf_counter() - s}")
     print_dev_dom(exact_elm, geom)
     print(f"Same HL output: {compare_hl(pde_elm, exact_elm, X)}")
+    get_grad(pde_elm.model, tf.convert_to_tensor(X_dom), 0)
     ...
 
 
