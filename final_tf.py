@@ -11,11 +11,11 @@ import time
 from typing import List, Tuple, Callable
 
 gpu = tf.config.list_physical_devices('GPU')
-GPU_FLG: bool = True
+GPU_FLG: bool = False
 if len(gpu) == 0:
     GPU_FLG = False
 
-DTYPE: str = "float64"
+DTYPE: str = "float32"
 dde.config.set_default_float(DTYPE)
 tf.keras.backend.set_floatx(DTYPE)
 if DTYPE == "float32":
@@ -69,21 +69,6 @@ class RectHole(Geometry):
 
         self.neumann_bcs: List[dde.icbc.boundary_conditions.NeumannBC] = []
         self.neumann_bcs.append(dde.NeumannBC(geom=self.geom, func=RectHole._exact_grad_n, on_boundary=RectHole._hor_boundary))
-        """
-        # code snippet boundary conditions from notebook
-        bcs = {'Dirichlet': [[None, ver_boundary], [None, int_boundary]], 'Neumann': [[exact_grad_n, hor_boundary]]}
-        D_bcs = []
-        for bc in bcs['Dirichlet']:
-            if bc[0] is None:
-                f = exact_sol
-            else:
-                f = bc[0]
-            D_bcs.append(dde.DirichletBC(geom, f, bc[1]))
-
-        N_bcs = []
-        for bc in bcs['Neumann']:
-            N_bcs.append(dde.NeumannBC(geom, bc[0], bc[1]))
-        """
 
         self.data_dom = dde.data.PDE(self.geom, RectHole.pde, [], num_domain=num_dom, num_boundary=0, num_test=num_tst, solution=None)
 
@@ -326,18 +311,20 @@ def rms(y_pred: np.ndarray, y_true: np.ndarray) -> float:
     """
     return ((y_pred - y_true)**2).mean()**0.5
 
+# TO DO calculate accuracy
+
 def compare_hl(pde: PdeELM, exact: ExactELM, X: np.ndarray) -> bool:
     yp = pde.model.predict(X)
     ye = exact.forward_prop(X)[-2]
-    diff = np.isclose(yp, ye, rtol=1e-5)
+    diff = np.isclose(yp, ye, rtol=1e-4)
     return np.sum(diff) == diff.size
 
 
 def main() -> None:
-    num_dom = 250
-    num_bnd = 90
-    num_tst = 340
-    layers = [24]
+    num_dom = 2048
+    num_bnd = 1024
+    num_tst = 4444
+    layers = [32]
 
     geom = RectHole(num_dom=num_dom, num_bnd=num_bnd, num_tst=num_tst)
     X_dom, _, _ = geom.data_dom.train_next_batch()
@@ -370,9 +357,8 @@ def main() -> None:
     print(f"\nTraining in seconds: {time.perf_counter() - s}")
     print_dev_dom(exact_elm, geom)
     print(f"Same HL output: {compare_hl(pde_elm, exact_elm, X)}")
-    ...
-
-
+    exact_weights = exact_elm.weights[-1]
+    pde_weights = pde_elm.w_out_
 
 if __name__=="__main__":
     if GPU_FLG:
