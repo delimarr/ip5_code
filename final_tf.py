@@ -117,7 +117,7 @@ class RectHole(Geometry):
     def _phi(r):
         x = r[:, 0:1]
         y = r[:, 1:]
-        return RectHole.a / (x**2 + y**2)**0.5 - 4
+        return (RectHole.a / (x**2 + y**2)**0.5) - 4
 
     def phi(self, r):
         return __class__._phi(r)
@@ -133,6 +133,8 @@ class PdeELM:
             layers (List[int]): hiddenlayer sizes without bias
             seed (Tuple[int, int], optional): Seed for weight, bias init. Defaults to None.
         """
+        self.seed = seed
+        self.layers = layers
         self.model: tf.keras.Sequential = _init_model(layers=layers, seed=seed)
 
     def fit(
@@ -176,6 +178,14 @@ class PdeELM:
         A_inv = np.linalg.pinv(A, rcond=1e-10)
         self.w_out_ = A_inv.dot(b)
 
+        self.full_model_: tf.keras.Sequential = _init_model(layers=self.layers, seed=None)
+        self.full_model_.add(tf.keras.layers.Dense(
+                    units=1,
+                    ))
+        for i, layer in enumerate(self.model.layers):
+            self.full_model_.layers[i].set_weights(layer.get_weights())
+        self.full_model_.layers[-1].set_weights([self.w_out_[1:,:], self.w_out_[0,:].flatten()])
+
     def predict(self, X: np.ndarray) -> np.ndarray:
         """Predict output, use only after fit!
 
@@ -188,6 +198,12 @@ class PdeELM:
         hl = self.model(X)
         hl = np.c_[np.ones((hl.shape[0], 1)), hl]
         return hl.dot(self.w_out_)
+
+    def get_accuracy(self, X: np.ndarray, phi: Callable) -> float:
+        loss = _get_loss(self.full_model_, tf.convert_to_tensor(X))
+        b = phi(X)
+        acc = loss + b
+        return (acc**2).mean()**.5
 
 class ExactELM:
     def __init__(self, pde_elm: PdeELM) -> None:
@@ -350,6 +366,8 @@ def main() -> None:
     pde_elm.fit(X_dom, phi_dom, dirichlet_bcs, neumann_bcs)
     print(f"\nTraining in seconds: {time.perf_counter() - s}")
     print_dev_dom(pde_elm, geom)
+    X, _, _ = geom.data_test.train_next_batch()
+    print(f"Accuracy pde_elm:\t{pde_elm.get_accuracy(X, geom.phi)}")
 
     exact_elm = ExactELM(pde_elm)
     s = time.perf_counter()
