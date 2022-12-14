@@ -9,6 +9,8 @@ if dde.backend.backend_name != 'tensorflow':
 import numpy as np
 import time
 from typing import List, Tuple, Callable
+import timeit
+from memory_profiler import profile
 
 gpu = tf.config.list_physical_devices('GPU')
 GPU_FLG: bool = False
@@ -137,6 +139,7 @@ class PdeELM:
         self.layers = layers
         self.model: tf.keras.Sequential = _init_model(layers=layers, seed=seed)
 
+    @profile
     def fit(
         self, 
         X_dom: np.ndarray, phi_dom: np.ndarray, 
@@ -264,6 +267,7 @@ def _get_loss(model: tf.keras.Sequential, X_r: tf.Tensor) -> np.ndarray:
     u_yy = get_grad(model, X_r, 1, 2)
     return u_xx + u_yy
 
+@profile
 def get_grad(model: tf.keras.Sequential, X_r: tf.Tensor, r: int, d: int = 1) -> np.ndarray:
     """Calculate the dth derivative from the model at r.
 
@@ -362,6 +366,7 @@ def main() -> None:
         X_neumann.append(X)
     
     pde_elm = PdeELM(layers, seed=(123, 456))
+    #it1 = timeit.repeat(lambda: pde_elm.fit(X_dom, phi_dom, dirichlet_bcs, neumann_bcs), number=100, repeat=1)
     s = time.perf_counter()
     pde_elm.fit(X_dom, phi_dom, dirichlet_bcs, neumann_bcs)
     print(f"\nTraining in seconds: {time.perf_counter() - s}")
