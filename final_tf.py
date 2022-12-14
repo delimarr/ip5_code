@@ -331,8 +331,6 @@ def rms(y_pred: np.ndarray, y_true: np.ndarray) -> float:
     """
     return ((y_pred - y_true)**2).mean()**0.5
 
-# TO DO calculate accuracy
-
 def compare_hl(pde: PdeELM, exact: ExactELM, X: np.ndarray) -> bool:
     yp = pde.model.predict(X)
     ye = exact.forward_prop(X)[-2]
