@@ -1,8 +1,6 @@
 from typing import List, Callable
 import numpy as np
-#import numpy as cp
-import cupy as cp
-# speedup ~3
+import numpy as cp
 import deepxde as dde
 import time
 
