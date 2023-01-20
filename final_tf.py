@@ -1,3 +1,4 @@
+"""first working elm, also executable on gpu"""
 import tensorflow as tf
 tf.get_logger().setLevel('ERROR')
 
@@ -13,7 +14,7 @@ import timeit
 from memory_profiler import profile
 
 gpu = tf.config.list_physical_devices('GPU')
-GPU_FLG: bool = False
+GPU_FLG: bool = True
 if len(gpu) == 0:
     GPU_FLG = False
 
@@ -331,18 +332,11 @@ def rms(y_pred: np.ndarray, y_true: np.ndarray) -> float:
     """
     return ((y_pred - y_true)**2).mean()**0.5
 
-def compare_hl(pde: PdeELM, exact: ExactELM, X: np.ndarray) -> bool:
-    yp = pde.model.predict(X)
-    ye = exact.forward_prop(X)[-2]
-    diff = np.isclose(yp, ye, rtol=1e-4)
-    return np.sum(diff) == diff.size
-
-
 def main() -> None:
     num_dom = 2048
     num_bnd = 1024
     num_tst = 4444
-    layers = [32]
+    layers = [32, 128, 512]
 
     geom = RectHole(num_dom=num_dom, num_bnd=num_bnd, num_tst=num_tst)
     X_dom, _, _ = geom.data_dom.train_next_batch()
@@ -377,7 +371,6 @@ def main() -> None:
     exact_elm.fit(X_dom, X_dirichlet, geom.exact_sol)
     print(f"\nTraining in seconds: {time.perf_counter() - s}")
     print_dev_dom(exact_elm, geom)
-    print(f"Same HL output: {compare_hl(pde_elm, exact_elm, X)}")
     exact_weights = exact_elm.weights[-1]
     pde_weights = pde_elm.w_out_
 

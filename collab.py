@@ -1,3 +1,4 @@
+"""This file containes code, copied from https://colab.research.google.com/drive/1mMHgepFcXqGjQArYEProerw4fS_Fl-9a?usp=sharing."""
 import os, sys, timeit
 
 import deepxde as dde
@@ -203,15 +204,17 @@ ref ={
 
 layers_nn = [10] * 4
 layers_elm = [8, 32, 128, 512]
+#layers: [45]	num_dom: 504	num_bnd: 96	r_cond: 1e-14
 
 lrn_rat = 0.015
-num_dom = 400
-num_bnd = 100
-num_tst = 420
-epochs = 5000
+num_dom = 50
+num_bnd = 40
+num_tst = 90
+epochs = 100
 eval_pts = 101
+optimizer = "adam"
 
-result = NN_calculation(geom, pde, exact_sol, bcs, layers_elm, lrn_rat, num_dom, num_bnd, num_tst, epochs, eval_pts = eval_pts, refinement=None, ELM=True)
+result = NN_calculation(geom, pde, exact_sol, bcs, layers_elm, lrn_rat, num_dom, num_bnd, num_tst, epochs, eval_pts = eval_pts, refinement=None, ELM=True, optimizer=optimizer)
 
 # ELM, with ref
 # Deviation:  0.01712401989699179

@@ -1,6 +1,10 @@
+"""Fit against the base function of the Pde."""
 from typing import List, Callable
 import numpy as np
-import numpy as cp
+
+# comment out to enable gpu
+import cupy as cp
+
 import deepxde as dde
 import time
 

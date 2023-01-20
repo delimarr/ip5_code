@@ -1,7 +1,7 @@
 # use backend tensorflow
 import os
 # comment out to enable gpu
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import numpy as np
 import deepxde as dde
 import time
