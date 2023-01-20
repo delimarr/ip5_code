@@ -115,18 +115,10 @@ class ELM:
 
 
 if __name__=="__main__":
-    w = cp.array([[ 0.1395294 ,  0.29510758, -0.27132335,  0.12483439,  0.11011721,
-         0.21989551, -0.77137834,  0.41155293, -0.37501417,  0.07072627,
-        -0.69562155],
-       [-0.26813292,  0.420781  ,  0.44541732,  0.12053914,  0.0694869 ,
-        -0.15112085, -0.02407222,  0.37201903,  0.78147207,  0.75806395,
-        -0.22427096],
-        ])
-
     g = RectHole()
     #X_train = cp.array(g.get_X(num_dom=400, num_bnd=100), dtype=cp.float64)
-    X_train = cp.array(g.get_X(num_dom=100, num_bnd=0), dtype=cp.float64)
-    #X_train = cp.array(g.get_X(num_dom=16384, num_bnd=4096), dtype=cp.float64)
+    #X_train = cp.array(g.get_X(num_dom=100, num_bnd=0), dtype=cp.float64)
+    X_train = cp.array(g.get_X(num_dom=16384, num_bnd=4096), dtype=cp.float64)
     y_train = cp.array(g.exact_sol(X_train), dtype=cp.float64)
 
     X_test = cp.array(g.get_X(num_dom=1001, num_bnd=255), dtype=cp.float64)
@@ -135,7 +127,7 @@ if __name__=="__main__":
 
     print("start training")
     start = time.perf_counter()
-    layers = [11]
+    layers = [32, 128, 512, 2048]
     elm = ELM(layers = layers, activation_func=cp.tanh, L=2)
     #elm.weights_[0] = w
     elm.fit(X_train, y_train)
@@ -148,5 +140,4 @@ if __name__=="__main__":
     print(f"training in seconds: {end_training - start}")
     print(f"inv time: {elm.inv_time}")
     print(f"evaluation in seconds: {end_eval - end_training}") 
-
-    # 0.020204147919863316
+    ...
