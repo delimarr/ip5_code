@@ -211,7 +211,7 @@ num_tst = 420
 epochs = 5000
 eval_pts = 101
 
-result = NN_calculation(geom, pde, exact_sol, bcs, layers_nn, lrn_rat, num_dom, num_bnd, num_tst, epochs, eval_pts = eval_pts, refinement=None, ELM=False)
+result = NN_calculation(geom, pde, exact_sol, bcs, layers_elm, lrn_rat, num_dom, num_bnd, num_tst, epochs, eval_pts = eval_pts, refinement=None, ELM=True)
 
 # ELM, with ref
 # Deviation:  0.01712401989699179
