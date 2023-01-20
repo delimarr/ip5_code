@@ -325,8 +325,8 @@ num_tst = 900
 epochs = 5000
 eval_pts = 301
 
-#nn_res = NN_calculation(geom, pde_nn, exact_sol, bcs, layers_nn, lrn_rat, num_dom, num_bnd, num_tst, epochs, eval_pts = eval_pts, plots=False, refinement=None, ELM=False)
-elm_res = NN_calculation(geom, pde, exact_sol, bcs, layers_elm, lrn_rat, num_dom, num_bnd, num_tst, epochs, eval_pts = eval_pts, plots=False, refinement=None, ELM=True)
+nn_res = NN_calculation(geom, pde_nn, exact_sol, bcs, layers_nn, lrn_rat, num_dom, num_bnd, num_tst, epochs, eval_pts = eval_pts, plots=False, refinement=None, ELM=False)
+#elm_res = NN_calculation(geom, pde, exact_sol, bcs, layers_elm, lrn_rat, num_dom, num_bnd, num_tst, epochs, eval_pts = eval_pts, plots=False, refinement=None, ELM=True)
 ...
 """
 # ELM with refinement
