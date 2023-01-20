@@ -1,4 +1,4 @@
-"""This file containes code, copied from https://colab.research.google.com/drive/1mMHgepFcXqGjQArYEProerw4fS_Fl-9a?usp=sharing."""
+"""This file containes code, copied from https://colab.research.google.com/drive/1mMHgepFcXqGjQArYEProerw4fS_Fl-9a?usp=sharing. author: A. Sacchetti"""
 import os, sys, timeit
 
 import deepxde as dde
